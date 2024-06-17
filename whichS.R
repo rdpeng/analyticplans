@@ -1,6 +1,10 @@
 ## Expect xbar in [-2, 2]
 
 library(tidyverse)
+set.seed(2024-06-01)
+
+## Expected range is [-a, a]
+a <- 2
 
 n <- 5
 x <- rnorm(n, 0, 1)
@@ -34,7 +38,7 @@ mean(x7)
 
 levels <- c(0, 1, 2, -1, 3, -2, 4, -3)
 dat <- tibble(x = c(x, x1, x2, x3, x4, x5, x6, x7),
-              id = factor(rep(levels, each = 5)))
+              id = factor(rep(levels, each = n)))
 dat |>
     ggplot(aes(x, id)) +
     geom_jitter(aes(color = id), size = 2, alpha = 1/2,
@@ -42,26 +46,50 @@ dat |>
     geom_point(aes(x = mx, y = id, color = id), size = 10,
                alpha = 1, pch = "|",
                data = dat |> group_by(id) |> summarize(mx = mean(x))) +
-    geom_vline(xintercept = c(-2, 2), lty = 3)
+    geom_vline(xintercept = c(-a, a), lty = 3)
 
 
+tests <- list(
+    t1 = function(x) {
+        any(between(x, -a, a)) && any(x > 20)
+    },
+    t2 = function(x) {
+        all(x > a) &&
+            between(mean(x > mean(x)), 0.4, 0.6)
+    },
+    t3 = function(x) {
+        any(x > 30) &&
+            !any(between(x, -a, a))
+    },
+    t4 = function(x) {
+        between(mean(x > mean(x)), 0.4, 0.6) &&
+            any(between(x, -a, a)) &&
+            any(x > a)
+    },
+    t5 = function(x) {
+        sd(x) > 4
+    },
+    tn = function(x) {
+        mean(x) > a
+    }
+)
 
-t1 <- function(x) {
-    all(x > 2)
-}
-t2 <- function(x) {
-    any(x > 10)
-}
 
-
-dat |>
+d0 <- dat |>
     group_by(id) |>
-    summarize(
-        t1 = all(x > 2),
-        t2 = any(x > 10),
-        t3 = any(x < -10),
-        t4 = between(mean(x > 5), .4, .6)
-    ) |>
-    mutate(across(starts_with("t"), as.integer))
+    reframe(test = map_dbl(tests, function(f) f(x))) |>
+    mutate(name = rep(paste0("t", 1:length(tests)), length(levels))) |>
+    pivot_wider(values_from = "test") |>
+    filter(id %in% 1:4)
+d0
 
 
+################################################################################
+
+x <- rnorm(5, 5, 7)
+map_dbl(tests, ~ .x(x))
+
+plot(x, rep(1, length(x)), xlim = range(x, -a, a))
+abline(v = c(-a, a), lty = 3)
+
+d0

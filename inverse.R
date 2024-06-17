@@ -28,11 +28,11 @@ sector <- Vectorize(sector)
 ## Simulate the distribution of X1 and X2 given (X1+X2)/2 %in% (-1, 1)
 
 a <- -2
-b <- 3
-sdev <- 10
+b <- 2
+sdev <- 5
 
 simdata <- function() {
-    x <- rnorm(3, 0, sdev)
+    x <- rnorm(2, 0, sdev)
     #x <- runif(2, -10, 10)
     #x <- rgamma(2, 1, 1/2)
     # x <- c(rnorm(1, 0, 10),
@@ -40,21 +40,21 @@ simdata <- function() {
     x
 }
 
-r <- replicate(2000, {
+r <- replicate(20, {
     x <- simdata()
     m <- median(x)
     tibble(x1 = x[1], x2 = x[2],
-           x3 = x[3],
+           #x3 = x[3],
            expect = between(m, a, b))
 }, simplify = FALSE) |>
     bind_rows() |>
     mutate(expect = factor(expect,
                            labels = c("Unexpected", "As-Expected")),
-           sector = sector(x1, x2, x3))
-           #sector = quad(x1, x2))
+           #sector = sector(x1, x2, x3))
+           sector = quad(x1, x2))
 
 r |>
-    mutate(x3 = cut_number(x3, 2)) |>
+    #mutate(x3 = cut_number(x3, 2)) |>
     ggplot(aes(x1, x2)) +
     geom_point(aes(color = expect), alpha = 1) +
     geom_hline(yintercept = 0, lty = 2) +
@@ -63,7 +63,24 @@ r |>
     ylab(expression(x[2])) +
     labs(title = substitute((x[1] + x[2])/2 %in% group("[", list(a, b), "]"),
                             list(a = a, b = b))) +
-    facet_wrap(vars(x3))
+    coord_fixed()
+    #facet_wrap(vars(x3))
+
+r |>
+    mutate(id = 1:n()) |>
+    pivot_longer(c(x1, x2)) |>
+    ggplot(aes(x = value, y = id)) +
+    geom_hline(aes(yintercept = id), col = "lightgray") +
+    geom_vline(xintercept = c(-2, 2), lty = 2) +
+    geom_point(aes(color = expect)) +
+    geom_point(aes(x = m, y = id), pch = "|", size = 8, alpha = 1/2,
+               data = r |>
+                   mutate(id = 1:n()) |>
+                   pivot_longer(c(x1, x2)) |>
+                   group_by(id) |>
+                   summarize(m = mean(value))) +
+    theme_void()
+
 
 r |>
     count(expect) |>
