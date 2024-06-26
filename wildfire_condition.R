@@ -7,13 +7,18 @@ library(lubridate)
 ## Process smoke wave/wildfire data
 load("data/smoke_wave_species.rda") ## 'm2'
 species <- m2 |>
-        rename(smoke = SW111.x, date = date.x, fips = fips.x) |>
-        mutate(fips = formatC(fips, flag = "0", width = 5)) |>
-        rename_with(~ sub("\\.PM2\\.5\\.LC$|\\.PM2\\.5\\.LC.TOR$", "", .x)) |>
-        mutate(include.spec = if_all(c(Aluminum:Zirconium, -Sulfur),
-                                     ~ !is.na(.x)),
-               include.smoke = !is.na(smoke)) |>
-        as_tibble()
+    rename(smoke = SW111.x, date = date.x, fips = fips.x) |>
+    mutate(fips = formatC(fips, flag = "0", width = 5)) |>
+    rename_with(~ sub("\\.PM2\\.5\\.LC$|\\.PM2\\.5\\.LC.TOR$", "", .x)) |>
+    mutate(include.spec = if_all(c(Aluminum:Zirconium, -Sulfur),
+                                 ~ !is.na(.x)),
+           include.smoke = !is.na(smoke)) |>
+    as_tibble() |>
+    as.condition_dataframe() |>
+    condition_add(function(d) all(c("smoke", "date", "fips",
+                                    "dow", "tmpd", "dptp") %in% names(d))) |>
+    condition_add(function(d) with(d, all(smoke >= 0, na.rm = TRUE))) |>
+    warn_object()
 
 ## Health data
 fipsList <- unique(species$fips)
@@ -38,12 +43,12 @@ mb <- bind_rows(m, .id = "fips")
 
 
 mcaps0 <- mb |>
-        left_join(select(species, -dow),
-                  by = c("fips", "date")) |>
-        filter(include.smoke) |>
-        mutate(season = factor(quarter(date)),
-               year.f = factor(year(date))) |>
-        select(-Sulfur)
+    left_join(select(species, -dow),
+              by = c("fips", "date")) |>
+    filter(include.smoke) |>
+    mutate(season = factor(quarter(date)),
+           year.f = factor(year(date))) |>
+    select(-Sulfur)
 
 ## Base Model on mcaps0
 
