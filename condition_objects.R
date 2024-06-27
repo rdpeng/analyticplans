@@ -80,8 +80,9 @@ as.condition_numeric <- function(x, ...) {
 
 as.condition_numeric.numeric <- function(x, conditions = list(), ...) {
     structure(x,
-              class = c(class(x), "condition_numeric",
-                        "condition_object", "numeric"),
+              class = c("condition_numeric",
+                        "condition_object", "numeric",
+                        class(x)),
               conditions = conditions)
 }
 
@@ -91,9 +92,17 @@ as.condition_dataframe <- function(x, ...) {
 
 as.condition_dataframe.data.frame <- function(x, conditions = list(), ...) {
     structure(x,
-              class = c(class(x), "condition_dataframe",
-                        "condition_object", "data.frame"),
+              class = c("condition_dataframe",
+                        "condition_object", "data.frame", class(x)),
               conditions = conditions)
+}
+
+as.condition_character <- function(x, ...) UseMethod("as.condition_character")
+
+as.condition_character.character <- function(x, ...) {
+    structure(x,
+              class = c("condition_character", "condition_object",
+                        class(x)))
 }
 
 diagnose <- function(x, ...) {

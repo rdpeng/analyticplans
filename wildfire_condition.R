@@ -18,13 +18,19 @@ species <- m2 |>
     condition_add(function(d) all(c("smoke", "date", "fips",
                                     "dow", "tmpd", "dptp") %in% names(d))) |>
     condition_add(function(d) with(d, all(smoke >= 0, na.rm = TRUE))) |>
+    condition_add(function(d) with(d, all(smoke %in% c(0, 1) | is.na(smoke)))) |>
     warn_object()
 
 ## Health data
 fipsList <- unique(species$fips)
 fileList <- sprintf("data/MCAPS/%s.rds", fipsList)
 use <- file.exists(fileList)
-fileList <- fileList[use]
+fileList <- fileList[use] |>
+    as.condition_character() |>
+    condition_add(function(x) isTRUE(all(file.exists(x))))
+
+## Pre-conditions for the next block of code
+check_object(fileList)
 
 m <- lapply(fileList, function(infile) {
     infile |>
@@ -33,13 +39,21 @@ m <- lapply(fileList, function(infile) {
         dplyr::select(date, denom, cardio, resp) |>
         filter(date >= "2004-01-01" & date <= "2009-12-31") |>
         group_by(date) |>
-        ## summarize_at(vars(denom:resp), sum) |>
         summarize(across(denom:resp, sum)) |>
         mutate(dow = factor(weekdays(date))) |>
         ungroup()
 })
 names(m) <- fipsList
-mb <- bind_rows(m, .id = "fips")
+mb <- bind_rows(m, .id = "fips") |>
+    as.condition_dataframe() |>
+    condition_add(function(d) with(d, isTRUE(all(cardio >= 0)))) |>
+    condition_add(function(d) with(d, isTRUE(all(resp >= 0)))) |>
+    condition_add(function(d) with(d, isTRUE(all(year(date) >= 2004
+                                                 & year(date) <= 20009)))) |>
+    condition_add(function(d) with(d, isTRUE(all(denom > 0))))
+
+check_object(mb)
+
 
 
 mcaps0 <- mb |>
@@ -49,6 +63,8 @@ mcaps0 <- mb |>
     mutate(season = factor(quarter(date)),
            year.f = factor(year(date))) |>
     select(-Sulfur)
+
+mcaps0
 
 ## Base Model on mcaps0
 
