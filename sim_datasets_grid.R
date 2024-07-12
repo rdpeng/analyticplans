@@ -1,30 +1,5 @@
 ## Simulate datasets on a grid
 
-library(tidyverse)
-
-# dat <- airquality |>
-#     filter(if_all(everything(), ~ !is.na(.x))) |>
-#     as_tibble()
-# dat
-#
-# xrng <- range(dat$Wind)
-# yrng <- range(dat$Ozone)
-#
-# gx <- seq(xrng[1], xrng[2], len = 30)
-# gy <- seq(yrng[1], yrng[2], len = 30)
-# gr <- expand.grid(Wind = gx, Ozone = gy) |>
-#     as_tibble()
-# gr
-#
-# gr |>
-#     sample_n(111) |>
-#     ggplot(aes(Wind, Ozone)) +
-#     geom_point() +
-#     geom_point(aes(Wind, Ozone), data = dat,
-#                color = "red")
-
-
-
 ################################################################################
 
 library(progress)
@@ -32,67 +7,72 @@ library(furrr)
 library(tidyverse)
 
 
-x0 <- 1:6
-y0 <- 1:6
-gr <- expand.grid(x = x0, y = y0)
+ncut <- 40
+x0 <- (1:ncut) / ncut
+y0 <- (1:ncut) / ncut
+gr <- expand_grid(x = x0, y = y0)
 ng <- nrow(gr)
-p <- 5
-ng^p
+ng
+p <- 20
+# ng^p |>
+#     format(big.mark = ",")
 
-#pb <- progress_bar$new(total = ng^p)
-plan(multisession, workers = 9L)
+ix <- seq_len(ng)
 
-r <- future_map(1:ng, function(i1) {
-    map(1:ng, function(i2) {
-        map(1:ng, function (i3) {
-            map(1:ng, function(i4) {
-                map(1:ng, function(i5) {
-                    # pb$tick()
-                    dat <- bind_rows(gr[i1, ],
-                                     gr[i2, ],
-                                     gr[i3, ],
-                                     gr[i4, ],
-                                     gr[i5, ])
-                    fit <- lm(y ~ x, data = dat)
-                    c(i1, i2, i3, i4, i5, coef(fit)[2])
-                })
-            })
-        })
-    })
-}, .progress = TRUE)
+Nsamp <- 200000
+pb <- progress_bar$new(total = Nsamp)
+r <- replicate(Nsamp, {
+    pb$tick()
+    j <- sample(ix, p, replace = TRUE)
+    dat <- gr[j, ]
+    fit <- lm(y ~ x, data = dat)
+    tibble(dat = list(dat),
+           fit = list(fit))
+}, simplify = FALSE)
 
-
-
-rr <- unlist(r, use.names = FALSE)
-m <- matrix(rr, byrow = TRUE, ncol = p + 1)
-head(m)
-tail(m)
-
-k <- p + 1
-hist(m[, k])
-
-u <- !is.na(m[, k]) & m[, k] > 0.4 & m[, k] < 0.5
-## u <- !is.na(m[, k]) & m[, k] > 1
-sum(u)
-mu <- m[u, ]
-head(mu)
-
-
-## i <- 2695599
-
-i <- sample(nrow(mu), 1)
-gr |>
-    left_join(gr[mu[i, -k], ] |>
-                     mutate(include = 1),
-              by = c("x", "y")) |>
+rr <- r |>
+    bind_rows(.id = "id")
+rr |>
+    mutate(beta = map_dbl(fit, ~ coef(.x)[2])) |>
+    filter(beta > 0.4 & beta < 0.5) |>
+    mutate(fit2 = map(dat, ~ lm(y ~ ns(x, 2), data = .x))) |>
+    mutate(curve = map2_int(fit, fit2, function(f1, f2) {
+        anova(f1, f2)$`Pr(>F)`[2] < 0.01
+    })) |>
+    filter(curve > 0) |>
+    mutate(sdr = map_dbl(fit2, ~ summary(.x)$sigma)) |>
+    arrange(sdr) |>
+    slice(1:8) |>
+    unnest(dat) |>
     ggplot(aes(x, y)) +
-    geom_raster(aes(fill = include), alpha = 1) +
+    geom_point() +
     geom_smooth(method = "lm", se = FALSE,
-                formula = "y ~ x",
-                data = gr[mu[i, -k], ]) +
-    geom_point(size = 2,
-               data = gr[mu[i, -k], ]) +
-    coord_fixed()
+                formula = "y ~ x") +
+    # geom_smooth(method = "lm",
+    #             formula = "y ~ ns(x, 2)",
+    #             se = FALSE) +
+    facet_wrap(vars(id), nrow = 2) +
+    coord_fixed() +
+    xlim(c(0, 1)) +
+    ylim(c(0, 1))
+
+
+
+
+
+## One at a time
+i <- sample(nrow(mu), 1)
+gr[mu[i, -k], ] |>
+    ggplot(aes(x, y)) +
+    geom_smooth(method = "lm", se = FALSE,
+                formula = "y ~ x") +
+    geom_point(size = 2) +
+    # geom_smooth(method = "lm",
+    #             formula = "y ~ ns(x, 3)",
+    #             se = FALSE) +
+    coord_fixed() +
+    xlim(c(0, 1)) +
+    ylim(c(0, 1))
 
 
 
@@ -101,11 +81,13 @@ gr |>
 
 library(tidyverse)
 
-ncat <- 20
+ncat <- 22
 x0 <- seq(-7, 7, len = ncat)
 x0
-
 nobs <- 6
+ncat^nobs |>
+    format(big.mark = ",")
+
 y <- map(seq_len(nobs), function(x) x0) |>
     reduce(function(x, y) outer(x, y, "+")) / nobs
 dim(y)
@@ -122,8 +104,8 @@ dat <- tibble(x = apply(isamp, 1, function(j) x0[j]) |>
                   as.vector(),
               id = rep(1:nrow(isamp), each = nobs)) |>
     group_by(id) |>
-    mutate(positive = ifelse(all(x > 0), "pos", "neg"),
-           sdx = ifelse(sd(x) < 1.9, "smallv", "largev"))
+    mutate(positive = ifelse(all(x > 0), "All Positive", "Some Negative"),
+           sdx = ifelse(sd(x) < 3, "Small Var.", "Large Var."))
 dat |>
     mutate(property = interaction(positive, sdx)) |>
     ggplot(aes(x, id)) +
